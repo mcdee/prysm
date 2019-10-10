@@ -7,7 +7,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-ssz"
-	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
@@ -98,9 +97,6 @@ func (s *Service) ReceiveBlockNoPubsub(ctx context.Context, block *ethpb.BeaconB
 
 	// Reports on block and fork choice metrics.
 	s.reportSlotMetrics(block.Slot)
-	if helpers.IsEpochStart(block.Slot) {
-		s.reportEpochMetrics(block.Slot)
-	}
 
 	// Log if block is a competing block.
 	isCompetingBlock(root[:], block.Slot, headRoot, headBlk.Slot)
@@ -147,9 +143,6 @@ func (s *Service) ReceiveBlockNoPubsubForkchoice(ctx context.Context, block *eth
 
 	// Reports on block and fork choice metrics.
 	s.reportSlotMetrics(block.Slot)
-	if helpers.IsEpochStart(block.Slot) {
-		s.reportEpochMetrics(block.Slot)
-	}
 
 	// Log state transition data.
 	logStateTransitionData(block, root[:])
@@ -186,9 +179,6 @@ func (s *Service) ReceiveBlockNoVerify(ctx context.Context, block *ethpb.BeaconB
 
 	// Reports on block and fork choice metrics.
 	s.reportSlotMetrics(block.Slot)
-	if helpers.IsEpochStart(block.Slot) {
-		s.reportEpochMetrics(block.Slot)
-	}
 
 	// Log state transition data.
 	log.WithFields(logrus.Fields{
