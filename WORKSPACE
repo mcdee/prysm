@@ -511,6 +511,12 @@ go_repository(
 )
 
 go_repository(
+    name = "com_github_lib_pq",
+    commit = "3427c32cb71afc948325f299f040e53c1dd78979",  # v1.2.0
+    importpath = "github.com/lib/pq",
+)
+
+go_repository(
     name = "org_golang_x_sys",
     commit = "fae7ac547cb717d141c433a2a173315e216b64c4",
     importpath = "golang.org/x/sys",
