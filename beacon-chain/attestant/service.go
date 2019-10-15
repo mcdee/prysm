@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
@@ -60,6 +61,7 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 // Start the metrics service event loop.
 func (s *Service) Start() {
 	go s.run(s.ctx)
+	go s.poll(s.ctx)
 }
 
 // Stop the metrics service event loop.
@@ -166,6 +168,35 @@ func (s *Service) updateBlockStats(headState *pb.BeaconState, blockHash [32]byte
 	return tx.Commit()
 }
 
+func (s *Service) updateNetworkState(headState *pb.BeaconState) error {
+	if headState == nil {
+		fmt.Printf("Headstate nil, cannot update network state\n")
+		// Can happen when the chain is not yet up and running
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	state := &networkState{
+		timestamp:          time.Now().Unix(),
+		epoch:              helpers.CurrentEpoch(headState),
+		justifiedEpoch:     headState.GetCurrentJustifiedCheckpoint().GetEpoch(),
+		lastJustifiedEpoch: headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
+		finalizedEpoch:     headState.GetFinalizedCheckpoint().GetEpoch(),
+	}
+
+	err = s.logNetworkState(tx, state)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (s *Service) run(ctx context.Context) {
 	sub := s.newHeadNotifier.HeadUpdatedFeed().Subscribe(s.newHeadRootChan)
 	defer sub.Unsubscribe()
@@ -195,5 +226,17 @@ func (s *Service) run(ctx context.Context) {
 			log.WithError(err).Error("Subscription to new chain head notifier failed")
 			return
 		}
+	}
+}
+
+func (s *Service) poll(ctx context.Context) {
+	for {
+		err := s.updateNetworkState(s.headFetcher.HeadState())
+		if err != nil {
+			log.WithError(err).Warn("failed to update network state")
+		}
+
+		// TODO make this configurable?
+		time.Sleep(30 * time.Second)
 	}
 }
