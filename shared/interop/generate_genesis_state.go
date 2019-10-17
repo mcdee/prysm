@@ -105,7 +105,7 @@ func createDepositData(privKey *bls.SecretKey, pubKey *bls.PublicKey) (*ethpb.De
 	if err != nil {
 		return nil, err
 	}
-	domain := bls.Domain(domainDeposit[:], genesisForkVersion)
+	domain := bls.Domain(domainDeposit[:], params.BeaconConfig().GenesisForkVersion)
 	di.Signature = privKey.Sign(sr[:], domain).Marshal()
 	return di, nil
 }

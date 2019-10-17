@@ -87,7 +87,10 @@ func (s *Service) updateValidatorStats(headState *pb.BeaconState) error {
 	defer tx.Rollback()
 
 	stats := &epochStats{
-		epoch: epoch,
+		epoch:                 epoch,
+		lastJustifiedEpoch:    headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
+		currentJustifiedEpoch: headState.GetCurrentJustifiedCheckpoint().GetEpoch(),
+		finalizedEpoch:        headState.GetFinalizedCheckpoint().GetEpoch(),
 	}
 
 	// Per-validator
@@ -182,11 +185,10 @@ func (s *Service) updateNetworkState(headState *pb.BeaconState) error {
 	defer tx.Rollback()
 
 	state := &networkState{
-		timestamp:          time.Now().Unix(),
-		epoch:              helpers.CurrentEpoch(headState),
-		justifiedEpoch:     headState.GetCurrentJustifiedCheckpoint().GetEpoch(),
-		lastJustifiedEpoch: headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
-		finalizedEpoch:     headState.GetFinalizedCheckpoint().GetEpoch(),
+		timestamp:      time.Now().Unix(),
+		epoch:          helpers.CurrentEpoch(headState),
+		justifiedEpoch: headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
+		finalizedEpoch: headState.GetFinalizedCheckpoint().GetEpoch(),
 	}
 
 	err = s.logNetworkState(tx, state)
