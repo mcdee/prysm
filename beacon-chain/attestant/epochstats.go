@@ -25,6 +25,7 @@ type epochStats struct {
 	lastJustifiedEpoch       uint64
 	currentJustifiedEpoch    uint64
 	finalizedEpoch           uint64
+	attestations             uint64
 }
 
 func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
@@ -47,6 +48,7 @@ func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
 	   ,f_last_justified_epoch
 	   ,f_current_justified_epoch
 	   ,f_finalized_epoch
+	   ,f_attestations
 	  ) VALUES (
 	    $1
 	   ,$2
@@ -65,6 +67,7 @@ func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
 	   ,$15
 	   ,$16
 	   ,$17
+	   ,$18
 	  )`,
 		stats.epoch,
 		stats.pendingInstances,
@@ -82,6 +85,7 @@ func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
 		stats.exitedInstances,
 		stats.lastJustifiedEpoch,
 		stats.currentJustifiedEpoch,
-		stats.finalizedEpoch)
+		stats.finalizedEpoch,
+		stats.attestations)
 	return err
 }

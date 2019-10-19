@@ -13,6 +13,7 @@ type validatorStats struct {
 	state            string
 	balance          uint64
 	effectiveBalance uint64
+	attested         bool
 }
 
 func (s *Service) logValidatorStats(tx *sql.Tx, stats *validatorStats) error {
@@ -23,17 +24,20 @@ func (s *Service) logValidatorStats(tx *sql.Tx, stats *validatorStats) error {
 	   ,f_state
 	   ,f_balance
 	   ,f_effective_balance
+	   ,f_attested
 	  ) VALUES (
 	    $1
 	   ,$2
 	   ,$3
 	   ,$4
 	   ,$5
+	   ,$6
 	  )`,
 		stats.epoch,
 		stats.id,
 		stats.state,
 		stats.balance,
-		stats.effectiveBalance)
+		stats.effectiveBalance,
+		stats.attested)
 	return err
 }

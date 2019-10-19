@@ -25,7 +25,9 @@ type Service struct {
 	newHeadNotifier    blockchain.NewHeadNotifier
 	newHeadRootChan    chan [32]byte
 	db                 *sql.DB
-	lastEpoch          uint64
+	currentEpoch       int64
+	// Map of validator indices that have had attestations included in blocks this epoch
+	epochAttestations map[uint64]bool
 }
 
 // Config options for the attestant service.
@@ -55,6 +57,8 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 		headFetcher:        cfg.HeadFetcher,
 		newHeadNotifier:    cfg.NewHeadNotifier,
 		newHeadRootChan:    make(chan [32]byte, 1),
+		currentEpoch:       -1,
+		epochAttestations:  make(map[uint64]bool),
 	}
 }
 
@@ -76,9 +80,8 @@ func (s *Service) Status() error {
 	return nil
 }
 
-// updateValidatorStats updates the validator stats.
-// Validator stats are per-epoch.
-func (s *Service) updateValidatorStats(headState *pb.BeaconState) error {
+// onEpoch is called whenever a block is received in a new epoch
+func (s *Service) onEpoch(headState *pb.BeaconState) error {
 	epoch := helpers.SlotToEpoch(headState.Slot)
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -87,19 +90,23 @@ func (s *Service) updateValidatorStats(headState *pb.BeaconState) error {
 	defer tx.Rollback()
 
 	stats := &epochStats{
-		epoch:                 epoch,
+		epoch:                 epoch - 1,
 		lastJustifiedEpoch:    headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
 		currentJustifiedEpoch: headState.GetCurrentJustifiedCheckpoint().GetEpoch(),
 		finalizedEpoch:        headState.GetFinalizedCheckpoint().GetEpoch(),
+		attestations:          uint64(len(s.epochAttestations)),
 	}
 
 	// Per-validator
 	for i, validator := range headState.Validators {
 		validatorStats := &validatorStats{
-			epoch:            epoch,
+			epoch:            epoch - 1,
 			id:               i,
 			balance:          headState.Balances[i],
 			effectiveBalance: validator.EffectiveBalance,
+		}
+		if _, exists := s.epochAttestations[uint64(i)]; exists {
+			validatorStats.attested = true
 		}
 		if validator.Slashed {
 			if epoch < validator.ExitEpoch {
@@ -122,6 +129,8 @@ func (s *Service) updateValidatorStats(headState *pb.BeaconState) error {
 				stats.exitedInstances++
 			}
 		} else if epoch < validator.ActivationEpoch {
+			// TODO also headState.GetEth1Data().GetDepositCount() - headState.Eth1DepositIndex ?
+			// as per https://github.com/ethereum/eth2.0-metrics/blob/master/metrics.md#additional-metrics
 			validatorStats.state = "pending"
 			stats.pendingInstances++
 			stats.pendingBalance += headState.Balances[i]
@@ -133,18 +142,25 @@ func (s *Service) updateValidatorStats(headState *pb.BeaconState) error {
 		}
 		err = s.logValidatorStats(tx, validatorStats)
 		if err != nil {
-			return err
+			log.WithError(err).WithField("validator", i).Warn("Failed to log validator statistics")
 		}
 	}
 	err = s.logEpochStats(tx, stats)
 	if err != nil {
-		return err
+		log.WithError(err).Warn("Failed to log epoch statistics")
 	}
+
+	// Reset the epoch attestations map
+	s.epochAttestations = make(map[uint64]bool)
+	s.currentEpoch = int64(epoch)
+
+	log.WithField("epoch", epoch-1).Debug("Updated metrics")
 
 	return tx.Commit()
 }
 
-func (s *Service) updateBlockStats(headState *pb.BeaconState, blockHash [32]byte, block *eth.BeaconBlock) error {
+// onBlock is called whenever the head block changes
+func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *eth.BeaconBlock) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -152,6 +168,16 @@ func (s *Service) updateBlockStats(headState *pb.BeaconState, blockHash [32]byte
 	defer tx.Rollback()
 
 	body := block.GetBody()
+
+	for i := range body.GetAttestations() {
+		indices, err := helpers.AttestingIndices(headState, body.GetAttestations()[i].GetData(), body.GetAttestations()[i].GetAggregationBits())
+		if err == nil {
+			for _, j := range indices {
+				s.epochAttestations[j] = true
+			}
+		}
+	}
+
 	stats := &blockStats{
 		slot:              headState.Slot,
 		hash:              blockHash,
@@ -208,19 +234,24 @@ func (s *Service) run(ctx context.Context) {
 			log.WithField("headRoot", fmt.Sprintf("%#x", r)).Debug("New chain head event")
 			headState := s.headFetcher.HeadState()
 
-			// Update statistics
-			err := s.updateBlockStats(headState, r, s.headFetcher.HeadBlock())
-			if err != nil {
-				log.WithError(err).Warn("failed to update block stats")
-			}
-
-			if helpers.IsEpochStart(headState.Slot) {
-				err = s.updateValidatorStats(headState)
+			epoch := helpers.SlotToEpoch(headState.Slot)
+			if s.currentEpoch == -1 {
+				// First time round; set the epoch
+				s.currentEpoch = int64(epoch)
+			} else if epoch > uint64(s.currentEpoch) {
+				// Change of epoch; wrap up stats for the previous epoch
+				err := s.onEpoch(headState)
 				if err != nil {
 					log.WithError(err).Warn("failed to update validator stats")
 				}
 			}
-			log.WithField("epoch", helpers.CurrentEpoch(headState)).Debug("Updated metrics")
+
+			// Update block statistics
+			err := s.onBlock(headState, r, s.headFetcher.HeadBlock())
+			if err != nil {
+				log.WithError(err).Warn("failed to update block stats")
+			}
+
 		case <-s.ctx.Done():
 			log.Debug("Context closed, exiting goroutine")
 			return
