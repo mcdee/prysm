@@ -29,6 +29,22 @@ var (
 		Name:  "enable-eth1-data-vote-cache",
 		Usage: "Enable unsafe cache mechanism. See https://github.com/prysmaticlabs/prysm/issues/3106",
 	}
+	enableShuffledIndexCache = cli.BoolFlag{
+		Name:  "enable-shuffled-index-cache",
+		Usage: "Enable unsafe cache mechanism. See https://github.com/prysmaticlabs/prysm/issues/3106",
+	}
+	enableCommitteeCacheFlag = cli.BoolFlag{
+		Name:  "enable-committee-cache",
+		Usage: "Enable unsafe cache mechanism. See https://github.com/prysmaticlabs/prysm/issues/3106",
+	}
+	enableActiveIndicesCacheFlag = cli.BoolFlag{
+		Name:  "enable-active-indices-cache",
+		Usage: "Enable unsafe cache mechanism. See https://github.com/prysmaticlabs/prysm/issues/3106",
+	}
+	enableActiveCountCacheFlag = cli.BoolFlag{
+		Name:  "enable-active-count-cache",
+		Usage: "Enable unsafe cache mechanism. See https://github.com/prysmaticlabs/prysm/issues/3106",
+	}
 	// InitSyncNoVerifyFlag enables the initial sync no verify configuration.
 	InitSyncNoVerifyFlag = cli.BoolFlag{
 		Name:  "init-sync-no-verify",
@@ -57,21 +73,33 @@ var (
 		Name:  "optimize-process-epoch",
 		Usage: "Process epoch with optimizations",
 	}
+	// Scatter scatters sequential processes to  multiple cores
+	Scatter = cli.BoolFlag{
+		Name:  "scatter",
+		Usage: "Scatter sequential processes to multiple cores",
+	}
 	pruneFinalizedStatesFlag = cli.BoolFlag{
 		Name:  "prune-finalized-states",
 		Usage: "Delete old states from the database after reaching new finalized checkpoint",
 	}
-	enableFinalizedBlockRootIndexFlag = cli.BoolFlag{
-		Name:  "enable-finalized-block-root-index",
-		Usage: "Enable tracking finalized block roots in database index.",
+	// enableSkipSlotsCache enables the skips slots lru cache to be used in runtime.
+	enableSkipSlotsCache = cli.BoolFlag{
+		Name:  "enable-skip-slots-cache",
+		Usage: "Enables the skip slot cache to be used in the event of skipped slots.",
 	}
 )
 
 // Deprecated flags list.
 const deprecatedUsage = "DEPRECATED. DO NOT USE."
+
 var (
 	deprecatedNoGenesisDelayFlag = cli.BoolFlag{
 		Name:   "no-genesis-delay",
+		Usage:  deprecatedUsage,
+		Hidden: true,
+	}
+	deprecatedEnableFinalizedBlockRootIndexFlag = cli.BoolFlag{
+		Name:   "enable-finalized-block-root-index",
 		Usage:  deprecatedUsage,
 		Hidden: true,
 	}
@@ -79,6 +107,7 @@ var (
 
 var deprecatedFlags = []cli.Flag{
 	deprecatedNoGenesisDelayFlag,
+	deprecatedEnableFinalizedBlockRootIndexFlag,
 }
 
 // ValidatorFlags contains a list of all the feature flags that apply to the validator client.
@@ -97,8 +126,13 @@ var BeaconChainFlags = append(deprecatedFlags, []cli.Flag{
 	NewCacheFlag,
 	SkipBLSVerifyFlag,
 	OptimizeProcessEpoch,
+	Scatter,
 	enableBackupWebhookFlag,
 	enableBLSPubkeyCacheFlag,
+	enableShuffledIndexCache,
+	enableCommitteeCacheFlag,
+	enableActiveIndicesCacheFlag,
+	enableActiveCountCacheFlag,
 	pruneFinalizedStatesFlag,
-	enableFinalizedBlockRootIndexFlag,
+	enableSkipSlotsCache,
 }...)
