@@ -22,6 +22,7 @@ type epochStats struct {
 	exitingEffectiveBalance  uint64
 	slashedInstances         uint64
 	exitedInstances          uint64
+	liveInstances            uint64
 	lastJustifiedEpoch       uint64
 	currentJustifiedEpoch    uint64
 	finalizedEpoch           uint64
@@ -45,6 +46,7 @@ func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
 	   ,f_exiting_effective_balance
 	   ,f_slashed_instances
 	   ,f_exited_instances
+	   ,f_live_instances
 	   ,f_last_justified_epoch
 	   ,f_current_justified_epoch
 	   ,f_finalized_epoch
@@ -68,6 +70,7 @@ func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
 	   ,$16
 	   ,$17
 	   ,$18
+	   ,$19
 	  )`,
 		stats.epoch,
 		stats.pendingInstances,
@@ -83,6 +86,7 @@ func (s *Service) logEpochStats(tx *sql.Tx, stats *epochStats) error {
 		stats.exitingEffectiveBalance,
 		stats.slashedInstances,
 		stats.exitedInstances,
+		stats.liveInstances,
 		stats.lastJustifiedEpoch,
 		stats.currentJustifiedEpoch,
 		stats.finalizedEpoch,

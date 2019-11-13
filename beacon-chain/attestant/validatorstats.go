@@ -9,7 +9,7 @@ import (
 // validatorStats are logged each epoch for each validator
 type validatorStats struct {
 	epoch            uint64
-	id               int
+	pubKey           []byte
 	state            string
 	balance          uint64
 	effectiveBalance uint64
@@ -20,7 +20,7 @@ func (s *Service) logValidatorStats(tx *sql.Tx, stats *validatorStats) error {
 	_, err := tx.Exec(`
 	  INSERT INTO t_validatorstats(
 	    f_epoch
-	   ,f_id
+	   ,f_public_key
 	   ,f_state
 	   ,f_balance
 	   ,f_effective_balance
@@ -34,7 +34,7 @@ func (s *Service) logValidatorStats(tx *sql.Tx, stats *validatorStats) error {
 	   ,$6
 	  )`,
 		stats.epoch,
-		stats.id,
+		stats.pubKey,
 		stats.state,
 		stats.balance,
 		stats.effectiveBalance,

@@ -8,6 +8,7 @@ import (
 
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/statefeed"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	eth "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/params"
@@ -22,8 +23,7 @@ type Service struct {
 	cancel             context.CancelFunc
 	genesisTimeFetcher blockchain.GenesisTimeFetcher
 	headFetcher        blockchain.HeadFetcher
-	newHeadNotifier    blockchain.NewHeadNotifier
-	newHeadRootChan    chan [32]byte
+	stateFeeder        blockchain.StateFeeder
 	db                 *sql.DB
 	currentEpoch       int64
 	// Map of validator indices that have had attestations included in blocks this epoch
@@ -34,7 +34,7 @@ type Service struct {
 type Config struct {
 	GenesisTimeFetcher blockchain.GenesisTimeFetcher
 	HeadFetcher        blockchain.HeadFetcher
-	NewHeadNotifier    blockchain.NewHeadNotifier
+	StateFeeder        blockchain.StateFeeder
 }
 
 // NewService initializes the service from configuration options.
@@ -55,8 +55,7 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 		cancel:             cancel,
 		genesisTimeFetcher: cfg.GenesisTimeFetcher,
 		headFetcher:        cfg.HeadFetcher,
-		newHeadNotifier:    cfg.NewHeadNotifier,
-		newHeadRootChan:    make(chan [32]byte, 1),
+		stateFeeder:        cfg.StateFeeder,
 		currentEpoch:       -1,
 		epochAttestations:  make(map[uint64]bool),
 	}
@@ -80,6 +79,49 @@ func (s *Service) Status() error {
 	return nil
 }
 
+// run is the main service loop.
+func (s *Service) run(ctx context.Context) {
+	stateChan := make(chan *statefeed.Event, 1)
+	stateSub := s.stateFeeder.StateFeed().Subscribe(stateChan)
+	defer stateSub.Unsubscribe()
+	for {
+		select {
+		case stateEvent := <-stateChan:
+			fmt.Printf("Received event %d\n", stateEvent.Type)
+			switch stateEvent.Type {
+			case statefeed.BlockProcessed:
+				data := stateEvent.Data.(statefeed.BlockProcessedData)
+				headState := s.headFetcher.HeadState()
+
+				// Update block statistics
+				err := s.onBlock(headState, data.BlockHash, s.headFetcher.HeadBlock())
+				if err != nil {
+					log.WithError(err).Warn("failed to update block stats")
+				}
+
+				// Update epoch statistics if applicable
+				epoch := helpers.SlotToEpoch(headState.Slot)
+				if s.currentEpoch == -1 {
+					// First time round; set the epoch
+					s.currentEpoch = int64(epoch)
+				} else if epoch > uint64(s.currentEpoch) {
+					// Change of epoch; wrap up stats for the previous epoch
+					err := s.onEpoch(headState)
+					if err != nil {
+						log.WithError(err).Warn("failed to update validator stats")
+					}
+				}
+			}
+		case <-s.ctx.Done():
+			log.Debug("Context closed, exiting goroutine")
+			return
+		case err := <-stateSub.Err():
+			log.WithError(err).Error("Subscription to state feed failed")
+			return
+		}
+	}
+}
+
 // onEpoch is called whenever a block is received in a new epoch
 func (s *Service) onEpoch(headState *pb.BeaconState) error {
 	epoch := helpers.SlotToEpoch(headState.Slot)
@@ -101,12 +143,14 @@ func (s *Service) onEpoch(headState *pb.BeaconState) error {
 	for i, validator := range headState.Validators {
 		validatorStats := &validatorStats{
 			epoch:            epoch - 1,
-			id:               i,
+			pubKey:           headState.Validators[i].PublicKey,
 			balance:          headState.Balances[i],
 			effectiveBalance: validator.EffectiveBalance,
 		}
 		if _, exists := s.epochAttestations[uint64(i)]; exists {
 			validatorStats.attested = true
+			// TODO add proposers as well to count of live instances (but don't double count)
+			stats.liveInstances++
 		}
 		if validator.Slashed {
 			if epoch < validator.ExitEpoch {
@@ -161,6 +205,7 @@ func (s *Service) onEpoch(headState *pb.BeaconState) error {
 
 // onBlock is called whenever the head block changes
 func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *eth.BeaconBlock) error {
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -183,7 +228,7 @@ func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *
 		hash:              blockHash,
 		attestations:      len(body.GetAttestations()),
 		deposits:          len(body.GetDeposits()),
-		transfers:         len(body.GetTransfers()),
+		transfers:         0,
 		exits:             len(body.GetVoluntaryExits()),
 		attesterSlashings: len(body.GetAttesterSlashings()),
 		proposerSlashings: len(body.GetProposerSlashings()),
@@ -225,43 +270,6 @@ func (s *Service) updateNetworkState(headState *pb.BeaconState) error {
 	return tx.Commit()
 }
 
-func (s *Service) run(ctx context.Context) {
-	sub := s.newHeadNotifier.HeadUpdatedFeed().Subscribe(s.newHeadRootChan)
-	defer sub.Unsubscribe()
-	for {
-		select {
-		case r := <-s.newHeadRootChan:
-			log.WithField("headRoot", fmt.Sprintf("%#x", r)).Debug("New chain head event")
-			headState := s.headFetcher.HeadState()
-
-			epoch := helpers.SlotToEpoch(headState.Slot)
-			if s.currentEpoch == -1 {
-				// First time round; set the epoch
-				s.currentEpoch = int64(epoch)
-			} else if epoch > uint64(s.currentEpoch) {
-				// Change of epoch; wrap up stats for the previous epoch
-				err := s.onEpoch(headState)
-				if err != nil {
-					log.WithError(err).Warn("failed to update validator stats")
-				}
-			}
-
-			// Update block statistics
-			err := s.onBlock(headState, r, s.headFetcher.HeadBlock())
-			if err != nil {
-				log.WithError(err).Warn("failed to update block stats")
-			}
-
-		case <-s.ctx.Done():
-			log.Debug("Context closed, exiting goroutine")
-			return
-		case err := <-sub.Err():
-			log.WithError(err).Error("Subscription to new chain head notifier failed")
-			return
-		}
-	}
-}
-
 func (s *Service) poll(ctx context.Context) {
 	for {
 		err := s.updateNetworkState(s.headFetcher.HeadState())
@@ -270,6 +278,6 @@ func (s *Service) poll(ctx context.Context) {
 		}
 
 		// TODO make this configurable?
-		time.Sleep(30 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }
