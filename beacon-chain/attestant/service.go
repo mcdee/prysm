@@ -87,7 +87,6 @@ func (s *Service) run(ctx context.Context) {
 	for {
 		select {
 		case stateEvent := <-stateChan:
-			fmt.Printf("Received event %d\n", stateEvent.Type)
 			switch stateEvent.Type {
 			case statefeed.BlockProcessed:
 				data := stateEvent.Data.(statefeed.BlockProcessedData)
