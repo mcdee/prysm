@@ -545,7 +545,7 @@ func (b *BeaconNode) registerAttestantService(ctx *cli.Context) error {
 		// TODO rationalise these
 		GenesisTimeFetcher: chainService,
 		HeadFetcher:        chainService,
-		NewHeadNotifier:    chainService,
+		StateNotifier:      b,
 	})
 	return b.services.RegisterService(svc)
 }

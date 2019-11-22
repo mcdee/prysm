@@ -23,7 +23,7 @@ type Service struct {
 	cancel             context.CancelFunc
 	genesisTimeFetcher blockchain.GenesisTimeFetcher
 	headFetcher        blockchain.HeadFetcher
-	stateFeeder        blockchain.StateFeeder
+	stateNotifier      statefeed.Notifier
 	db                 *sql.DB
 	currentEpoch       int64
 	// Map of validator indices that have had attestations included in blocks this epoch
@@ -34,7 +34,7 @@ type Service struct {
 type Config struct {
 	GenesisTimeFetcher blockchain.GenesisTimeFetcher
 	HeadFetcher        blockchain.HeadFetcher
-	StateFeeder        blockchain.StateFeeder
+	StateNotifier      statefeed.Notifier
 }
 
 // NewService initializes the service from configuration options.
@@ -55,7 +55,7 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 		cancel:             cancel,
 		genesisTimeFetcher: cfg.GenesisTimeFetcher,
 		headFetcher:        cfg.HeadFetcher,
-		stateFeeder:        cfg.StateFeeder,
+		stateNotifier:      cfg.StateNotifier,
 		currentEpoch:       -1,
 		epochAttestations:  make(map[uint64]bool),
 	}
@@ -81,19 +81,23 @@ func (s *Service) Status() error {
 
 // run is the main service loop.
 func (s *Service) run(ctx context.Context) {
-	stateChan := make(chan *statefeed.Event, 1)
-	stateSub := s.stateFeeder.StateFeed().Subscribe(stateChan)
+	stateChannel := make(chan *statefeed.Event, 1)
+	stateSub := s.stateNotifier.StateFeed().Subscribe(stateChannel)
 	defer stateSub.Unsubscribe()
 	for {
 		select {
-		case stateEvent := <-stateChan:
+		case stateEvent := <-stateChannel:
 			switch stateEvent.Type {
 			case statefeed.BlockProcessed:
-				data := stateEvent.Data.(statefeed.BlockProcessedData)
-				headState := s.headFetcher.HeadState()
+				data := stateEvent.Data.(*statefeed.BlockProcessedData)
+				headState, err := s.headFetcher.HeadState(s.ctx)
+				if err != nil {
+					log.WithError(err).Warn("failed to obtain head state")
+					continue
+				}
 
 				// Update block statistics
-				err := s.onBlock(headState, data.BlockHash, s.headFetcher.HeadBlock())
+				err = s.onBlock(headState, data.BlockRoot, s.headFetcher.HeadBlock())
 				if err != nil {
 					log.WithError(err).Warn("failed to update block stats")
 				}
@@ -271,9 +275,12 @@ func (s *Service) updateNetworkState(headState *pb.BeaconState) error {
 
 func (s *Service) poll(ctx context.Context) {
 	for {
-		err := s.updateNetworkState(s.headFetcher.HeadState())
-		if err != nil {
-			log.WithError(err).Warn("failed to update network state")
+		headState, err := s.headFetcher.HeadState(s.ctx)
+		if err == nil {
+			err = s.updateNetworkState(headState)
+			if err != nil {
+				log.WithError(err).Warn("failed to update network state")
+			}
 		}
 
 		// TODO make this configurable?
