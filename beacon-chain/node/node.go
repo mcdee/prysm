@@ -545,7 +545,6 @@ func (b *BeaconNode) registerAttestantService(ctx *cli.Context) error {
 		return err
 	}
 	svc := attestant.NewService(context.Background(), &attestant.Config{
-		// TODO rationalise these
 		GenesisTimeFetcher: chainService,
 		HeadFetcher:        chainService,
 		StateNotifier:      b,

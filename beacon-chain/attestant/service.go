@@ -96,24 +96,29 @@ func (s *Service) run(ctx context.Context) {
 					continue
 				}
 
-				// Update block statistics
-				err = s.onBlock(headState, data.BlockRoot, s.headFetcher.HeadBlock())
-				if err != nil {
-					log.WithError(err).Warn("failed to update block stats")
-				}
-
-				// Update epoch statistics if applicable
-				epoch := helpers.SlotToEpoch(headState.Slot)
-				if s.currentEpoch == -1 {
-					// First time round; set the epoch
-					s.currentEpoch = int64(epoch)
-				} else if epoch > uint64(s.currentEpoch) {
-					// Change of epoch; wrap up stats for the previous epoch
-					err := s.onEpoch(headState)
+				go func() {
+					// Update block statistics
+					err = s.onBlock(headState, data.BlockRoot, s.headFetcher.HeadBlock())
 					if err != nil {
-						log.WithError(err).Warn("failed to update validator stats")
+						log.WithError(err).Warn("failed to update block stats")
 					}
-				}
+
+					// Update epoch statistics if applicable
+					epoch := helpers.SlotToEpoch(headState.Slot)
+					if s.currentEpoch == -1 {
+						// First time round; set the epoch
+						s.currentEpoch = int64(epoch)
+					} else if epoch > uint64(s.currentEpoch) {
+						// Change of epoch; wrap up stats for the previous epoch
+						// Update epoch first so future blocks coming in don't trigger this again
+						finishedEpoch := uint64(s.currentEpoch)
+						s.currentEpoch = int64(epoch)
+						err := s.onEpoch(headState, finishedEpoch)
+						if err != nil {
+							log.WithError(err).Warn("failed to update validator stats")
+						}
+					}
+				}()
 			}
 		case <-s.ctx.Done():
 			log.Debug("Context closed, exiting goroutine")
@@ -126,8 +131,11 @@ func (s *Service) run(ctx context.Context) {
 }
 
 // onEpoch is called whenever a block is received in a new epoch
-func (s *Service) onEpoch(headState *pb.BeaconState) error {
-	epoch := helpers.SlotToEpoch(headState.Slot)
+func (s *Service) onEpoch(headState *pb.BeaconState, finishedEpoch uint64) error {
+	// Reset the epoch stats in the service now so writes can continue
+	epochAttestations := s.epochAttestations
+	s.epochAttestations = make(map[uint64]bool)
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -135,28 +143,28 @@ func (s *Service) onEpoch(headState *pb.BeaconState) error {
 	defer tx.Rollback()
 
 	stats := &epochStats{
-		epoch:                 epoch - 1,
+		epoch:                 finishedEpoch,
 		lastJustifiedEpoch:    headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
 		currentJustifiedEpoch: headState.GetCurrentJustifiedCheckpoint().GetEpoch(),
 		finalizedEpoch:        headState.GetFinalizedCheckpoint().GetEpoch(),
-		attestations:          uint64(len(s.epochAttestations)),
+		attestations:          uint64(len(epochAttestations)),
 	}
 
 	// Per-validator
 	for i, validator := range headState.Validators {
 		validatorStats := &validatorStats{
-			epoch:            epoch - 1,
+			epoch:            finishedEpoch,
 			pubKey:           headState.Validators[i].PublicKey,
 			balance:          headState.Balances[i],
 			effectiveBalance: validator.EffectiveBalance,
 		}
-		if _, exists := s.epochAttestations[uint64(i)]; exists {
+		if _, exists := epochAttestations[uint64(i)]; exists {
 			validatorStats.attested = true
 			// TODO add proposers as well to count of live instances (but don't double count)
 			stats.liveInstances++
 		}
 		if validator.Slashed {
-			if epoch < validator.ExitEpoch {
+			if finishedEpoch < validator.ExitEpoch {
 				validatorStats.state = "slashing"
 				stats.slashingInstances++
 				stats.slashingBalance += headState.Balances[i]
@@ -166,7 +174,7 @@ func (s *Service) onEpoch(headState *pb.BeaconState) error {
 				stats.slashedInstances++
 			}
 		} else if validator.ExitEpoch != params.BeaconConfig().FarFutureEpoch {
-			if epoch < validator.ExitEpoch {
+			if finishedEpoch < validator.ExitEpoch {
 				validatorStats.state = "exiting"
 				stats.exitingInstances++
 				stats.exitingBalance += headState.Balances[i]
@@ -175,7 +183,7 @@ func (s *Service) onEpoch(headState *pb.BeaconState) error {
 				validatorStats.state = "exited"
 				stats.exitedInstances++
 			}
-		} else if epoch < validator.ActivationEpoch {
+		} else if finishedEpoch < validator.ActivationEpoch {
 			// TODO also headState.GetEth1Data().GetDepositCount() - headState.Eth1DepositIndex ?
 			// as per https://github.com/ethereum/eth2.0-metrics/blob/master/metrics.md#additional-metrics
 			validatorStats.state = "pending"
@@ -197,11 +205,7 @@ func (s *Service) onEpoch(headState *pb.BeaconState) error {
 		log.WithError(err).Warn("Failed to log epoch statistics")
 	}
 
-	// Reset the epoch attestations map
-	s.epochAttestations = make(map[uint64]bool)
-	s.currentEpoch = int64(epoch)
-
-	log.WithField("epoch", epoch-1).Debug("Updated metrics")
+	log.WithField("epoch", finishedEpoch).Debug("Updated metrics")
 
 	return tx.Commit()
 }
