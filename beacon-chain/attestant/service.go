@@ -141,13 +141,16 @@ func (s *Service) onEpoch(headState *pb.BeaconState, finishedEpoch uint64) error
 		return err
 	}
 	defer tx.Rollback()
+	logValidatorStatsStmt, err := prepareInsertValidatorStmt(tx)
+	if err != nil {
+		return err
+	}
 
 	stats := &epochStats{
 		epoch:                 finishedEpoch,
 		lastJustifiedEpoch:    headState.GetPreviousJustifiedCheckpoint().GetEpoch(),
 		currentJustifiedEpoch: headState.GetCurrentJustifiedCheckpoint().GetEpoch(),
 		finalizedEpoch:        headState.GetFinalizedCheckpoint().GetEpoch(),
-		attestations:          uint64(len(epochAttestations)),
 	}
 
 	// Per-validator
@@ -195,7 +198,7 @@ func (s *Service) onEpoch(headState *pb.BeaconState, finishedEpoch uint64) error
 			stats.activeBalance += headState.Balances[i]
 			stats.activeEffectiveBalance += validator.EffectiveBalance
 		}
-		err = s.logValidatorStats(tx, validatorStats)
+		err = s.logValidatorStats(logValidatorStatsStmt, validatorStats)
 		if err != nil {
 			log.WithError(err).WithField("validator", i).Warn("Failed to log validator statistics")
 		}

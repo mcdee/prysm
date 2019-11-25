@@ -16,8 +16,8 @@ type validatorStats struct {
 	attested         bool
 }
 
-func (s *Service) logValidatorStats(tx *sql.Tx, stats *validatorStats) error {
-	_, err := tx.Exec(`
+func prepareInsertValidatorStmt(tx *sql.Tx) (*sql.Stmt, error) {
+	return tx.Prepare(`
 	  INSERT INTO t_validatorstats(
 	    f_epoch
 	   ,f_public_key
@@ -32,12 +32,10 @@ func (s *Service) logValidatorStats(tx *sql.Tx, stats *validatorStats) error {
 	   ,$4
 	   ,$5
 	   ,$6
-	  )`,
-		stats.epoch,
-		stats.pubKey,
-		stats.state,
-		stats.balance,
-		stats.effectiveBalance,
-		stats.attested)
+	  )`)
+}
+
+func (s *Service) logValidatorStats(stmt *sql.Stmt, stats *validatorStats) error {
+	_, err := stmt.Exec(stats.epoch, stats.pubKey, stats.state, stats.balance, stats.effectiveBalance, stats.attested)
 	return err
 }
