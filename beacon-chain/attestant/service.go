@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	ethpb "github.com/prysmaticlabs/ethereumapis/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/statefeed"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
-	eth "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/sirupsen/logrus"
 )
@@ -214,7 +214,7 @@ func (s *Service) onEpoch(headState *pb.BeaconState, finishedEpoch uint64) error
 }
 
 // onBlock is called whenever the head block changes
-func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *eth.BeaconBlock) error {
+func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *ethpb.BeaconBlock) error {
 
 	tx, err := s.db.Begin()
 	if err != nil {
