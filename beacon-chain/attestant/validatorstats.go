@@ -3,6 +3,7 @@ package attestant
 import (
 	"database/sql"
 
+	// Postgres
 	_ "github.com/lib/pq"
 )
 
