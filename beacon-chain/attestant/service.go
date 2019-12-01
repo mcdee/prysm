@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	ethpb "github.com/prysmaticlabs/ethereumapis/eth/v1alpha1"
@@ -19,6 +20,7 @@ var log = logrus.WithField("prefix", "attestant")
 
 // Service defining metrics functionality for storing metrics in a database backend.
 type Service struct {
+	mu                 *sync.RWMutex
 	ctx                context.Context
 	cancel             context.CancelFunc
 	genesisTimeFetcher blockchain.GenesisTimeFetcher
@@ -50,6 +52,7 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 
 	ctx, cancel := context.WithCancel(ctx)
 	return &Service{
+		mu:                 new(sync.RWMutex),
 		db:                 db,
 		ctx:                ctx,
 		cancel:             cancel,
@@ -133,8 +136,10 @@ func (s *Service) run(ctx context.Context) {
 // onEpoch is called whenever a block is received in a new epoch
 func (s *Service) onEpoch(headState *pb.BeaconState, finishedEpoch uint64) error {
 	// Reset the epoch stats in the service now so writes can continue
+	s.mu.Lock()
 	epochAttestations := s.epochAttestations
 	s.epochAttestations = make(map[uint64]bool)
+	s.mu.Unlock()
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -224,6 +229,7 @@ func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *
 
 	body := block.GetBody()
 
+	s.mu.Lock()
 	for i := range body.GetAttestations() {
 		indices, err := helpers.AttestingIndices(headState, body.GetAttestations()[i].GetData(), body.GetAttestations()[i].GetAggregationBits())
 		if err == nil {
@@ -232,6 +238,7 @@ func (s *Service) onBlock(headState *pb.BeaconState, blockHash [32]byte, block *
 			}
 		}
 	}
+	s.mu.Unlock()
 
 	stats := &blockStats{
 		slot:              headState.Slot,
