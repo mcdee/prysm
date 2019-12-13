@@ -3,10 +3,12 @@ package sync
 import (
 	"context"
 	"reflect"
+	"strings"
 	"time"
 
 	libp2pcore "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	"github.com/prysmaticlabs/prysm/shared/roughtime"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
@@ -69,6 +71,20 @@ func (r *Service) registerRPC(topic string, base interface{}, handle rpcHandler)
 		if err := stream.SetReadDeadline(roughtime.Now().Add(ttfbTimeout)); err != nil {
 			log.WithError(err).Error("Could not set stream read deadline")
 			return
+		}
+
+		// Reject all non-local requests except handshakes from peers with which we are not connected.
+		if !strings.HasPrefix(topic, "/eth2/beacon_chain/req/status/1/") &&
+			stream.Conn().RemotePeer() != stream.Conn().LocalPeer() {
+			peerConnectionState, err := r.p2p.Peers().ConnectionState(stream.Conn().RemotePeer())
+			if err != nil {
+				log.WithField("topic", topic).WithError(err).Debug("Received message from unknown peer; ignoring")
+				return
+			}
+			if peerConnectionState != peers.PeerConnected {
+				log.WithField("topic", topic).WithField("connectionState", peerConnectionState).Debug("Received message from unconnected peer; ignoring")
+				return
+			}
 		}
 
 		// Given we have an input argument that can be pointer or [][32]byte, this gives us

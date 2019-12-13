@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
+	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers"
 	"github.com/prysmaticlabs/prysm/shared/hashutil"
 	"github.com/prysmaticlabs/prysm/shared/roughtime"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
@@ -180,8 +182,20 @@ func (r *Service) subscribe(topic string, validate validator, handle subHandler)
 				messageReceivedBeforeChainStartCounter.WithLabelValues(topic + r.p2p.Encoding().ProtocolSuffix()).Inc()
 				continue
 			}
-			// Special validation occurs on messages received from ourselves.
+
 			fromSelf := msg.GetFrom() == r.p2p.PeerID()
+			// Reject all non-local messages except handshakes from peers with which we are not connected.
+			if !strings.HasPrefix(topic, "/eth2/beacon_chain/req/status/1/") && !fromSelf {
+				peerConnectionState, err := r.p2p.Peers().ConnectionState(msg.GetFrom())
+				if err != nil {
+					log.WithField("topic", topic).WithField("peer", msg.GetFrom()).WithError(err).Debug("Received message from unknown peer; ignoring")
+					continue
+				}
+				if peerConnectionState != peers.PeerConnected {
+					log.WithField("topic", topic).WithField("peer", msg.GetFrom()).WithField("connectionState", peerConnectionState).Debug("Received message from peer with bad connection state; ignoring")
+					continue
+				}
+			}
 
 			messageReceivedCounter.WithLabelValues(topic + r.p2p.Encoding().ProtocolSuffix()).Inc()
 
