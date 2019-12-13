@@ -79,6 +79,7 @@ func (p *TestP2P) ReceiveRPC(topic string, msg proto.Message) {
 	if err := connect(h, p.Host); err != nil {
 		p.t.Fatalf("Failed to connect two peers for RPC: %v", err)
 	}
+	p.Peers().SetConnectionState(h.ID(), peers.PeerConnected)
 	s, err := h.NewStream(context.Background(), p.Host.ID(), protocol.ID(topic+p.Encoding().ProtocolSuffix()))
 	if err != nil {
 		p.t.Fatalf("Failed to open stream %v", err)
@@ -96,6 +97,8 @@ func (p *TestP2P) ReceiveRPC(topic string, msg proto.Message) {
 // ReceivePubSub simulates an incoming message over pubsub on a given topic.
 func (p *TestP2P) ReceivePubSub(topic string, msg proto.Message) {
 	h := bhost.NewBlankHost(swarmt.GenSwarm(p.t, context.Background()))
+	p.Peers().SetConnectionState(h.ID(), peers.PeerConnected)
+
 	ps, err := pubsub.NewFloodSub(context.Background(), h,
 		pubsub.WithMessageSigning(false),
 		pubsub.WithStrictSignatureVerification(false),
