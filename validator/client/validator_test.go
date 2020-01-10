@@ -46,7 +46,7 @@ func generateMockStatusResponse(pubkeys [][]byte) *ethpb.ValidatorActivationResp
 		multipleStatus[i] = &ethpb.ValidatorActivationResponse_Status{
 			PublicKey: key,
 			Status: &ethpb.ValidatorStatusResponse{
-				Status: ethpb.ValidatorStatus_UNKNOWN_STATUS,
+				Status: ethpb.ValidatorState_UNKNOWN_STATE,
 			},
 		}
 	}
@@ -255,7 +255,7 @@ func TestWaitActivation_LogsActivationEpochOK(t *testing.T) {
 		genesisTime:     1,
 	}
 	resp := generateMockStatusResponse(publicKeys(v.keyManager))
-	resp.Statuses[0].Status.Status = ethpb.ValidatorStatus_ACTIVE
+	resp.Statuses[0].Status.Status = ethpb.ValidatorState_ACTIVE
 	clientStream := internal.NewMockBeaconNodeValidator_WaitForActivationClient(ctrl)
 	client.EXPECT().WaitForActivation(
 		gomock.Any(),
@@ -324,8 +324,8 @@ func TestWaitMultipleActivation_LogsActivationEpochOK(t *testing.T) {
 		genesisTime:     1,
 	}
 	resp := generateMockStatusResponse(publicKeys(v.keyManager))
-	resp.Statuses[0].Status.Status = ethpb.ValidatorStatus_ACTIVE
-	resp.Statuses[1].Status.Status = ethpb.ValidatorStatus_ACTIVE
+	resp.Statuses[0].Status.Status = ethpb.ValidatorState_ACTIVE
+	resp.Statuses[1].Status.Status = ethpb.ValidatorState_ACTIVE
 	clientStream := internal.NewMockBeaconNodeValidator_WaitForActivationClient(ctrl)
 	client.EXPECT().WaitForActivation(
 		gomock.Any(),
@@ -353,7 +353,7 @@ func TestWaitActivation_NotAllValidatorsActivatedOK(t *testing.T) {
 		genesisTime:     1,
 	}
 	resp := generateMockStatusResponse(publicKeys(v.keyManager))
-	resp.Statuses[0].Status.Status = ethpb.ValidatorStatus_ACTIVE
+	resp.Statuses[0].Status.Status = ethpb.ValidatorState_ACTIVE
 	clientStream := internal.NewMockBeaconNodeValidator_WaitForActivationClient(ctrl)
 	client.EXPECT().WaitForActivation(
 		gomock.Any(),

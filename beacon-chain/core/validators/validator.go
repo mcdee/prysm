@@ -13,6 +13,32 @@ import (
 	"github.com/prysmaticlabs/prysm/shared/params"
 )
 
+// ValidatorState returns the state of a validator given a beacon chain state and index.
+func ValidatorState(state *pb.BeaconState, idx uint64) (ethpb.ValidatorState, error) {
+	currentEpoch := state.Slot / params.BeaconConfig().SlotsPerEpoch
+
+	if idx >= uint64(len(state.Validators)) {
+		return ethpb.ValidatorState_UNKNOWN_STATE, errors.New("unknown validator")
+	}
+	validator := state.Validators[idx]
+	if validator.Slashed {
+		if currentEpoch < validator.ExitEpoch {
+			return ethpb.ValidatorState_SLASHING, nil
+		}
+		return ethpb.ValidatorState_SLASHED, nil
+	}
+	if validator.ExitEpoch != params.BeaconConfig().FarFutureEpoch {
+		if currentEpoch < validator.ExitEpoch {
+			return ethpb.ValidatorState_EXITING, nil
+		}
+		return ethpb.ValidatorState_EXITED, nil
+	}
+	if currentEpoch < validator.ActivationEpoch {
+		return ethpb.ValidatorState_PENDING, nil
+	}
+	return ethpb.ValidatorState_ACTIVE, nil
+}
+
 // InitiateValidatorExit takes in validator index and updates
 // validator with correct voluntary exit parameters.
 //

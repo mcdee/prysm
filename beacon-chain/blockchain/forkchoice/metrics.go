@@ -3,10 +3,11 @@ package forkchoice
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	ethpb "github.com/prysmaticlabs/ethereumapis/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/epoch/precompute"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/validators"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
-	"github.com/prysmaticlabs/prysm/shared/params"
 )
 
 var (
@@ -73,8 +74,6 @@ var (
 )
 
 func reportEpochMetrics(state *pb.BeaconState) {
-	currentEpoch := state.Slot / params.BeaconConfig().SlotsPerEpoch
-
 	// Validator instances
 	pendingInstances := 0
 	activeInstances := 0
@@ -92,34 +91,31 @@ func reportEpochMetrics(state *pb.BeaconState) {
 	slashingEffectiveBalance := uint64(0)
 
 	for i, validator := range state.Validators {
-		if validator.Slashed {
-			if currentEpoch < validator.ExitEpoch {
-				slashingInstances++
-				slashingBalance += state.Balances[i]
-				slashingEffectiveBalance += validator.EffectiveBalance
-			} else {
-				slashedInstances++
-			}
+		validatorState, err := validators.ValidatorState(state, uint64(i))
+		if err == nil {
 			continue
 		}
-		if validator.ExitEpoch != params.BeaconConfig().FarFutureEpoch {
-			if currentEpoch < validator.ExitEpoch {
-				exitingInstances++
-				exitingBalance += state.Balances[i]
-				exitingEffectiveBalance += validator.EffectiveBalance
-			} else {
-				exitedInstances++
-			}
-			continue
-		}
-		if currentEpoch < validator.ActivationEpoch {
+		switch validatorState {
+		case ethpb.ValidatorState_PENDING:
 			pendingInstances++
 			pendingBalance += state.Balances[i]
-			continue
+		case ethpb.ValidatorState_ACTIVE:
+			activeInstances++
+			activeBalance += state.Balances[i]
+			activeEffectiveBalance += validator.EffectiveBalance
+		case ethpb.ValidatorState_SLASHING:
+			slashingInstances++
+			slashingBalance += state.Balances[i]
+			slashingEffectiveBalance += validator.EffectiveBalance
+		case ethpb.ValidatorState_SLASHED:
+			slashedInstances++
+		case ethpb.ValidatorState_EXITING:
+			exitingInstances++
+			exitingBalance += state.Balances[i]
+			exitingEffectiveBalance += validator.EffectiveBalance
+		case ethpb.ValidatorState_EXITED:
+			exitedInstances++
 		}
-		activeInstances++
-		activeBalance += state.Balances[i]
-		activeEffectiveBalance += validator.EffectiveBalance
 	}
 	validatorsCount.WithLabelValues("Pending").Set(float64(pendingInstances))
 	validatorsCount.WithLabelValues("Active").Set(float64(activeInstances))

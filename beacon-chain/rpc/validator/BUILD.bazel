@@ -6,6 +6,8 @@ go_library(
         "assignments.go",
         "attester.go",
         "exit.go",
+        "getconfig.go",
+        "getinfo.go",
         "proposer.go",
         "server.go",
         "status.go",

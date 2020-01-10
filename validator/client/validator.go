@@ -169,15 +169,15 @@ func (v *validator) checkAndLogValidatorStatus(validatorStatuses []*ethpb.Valida
 			"pubKey": fmt.Sprintf("%#x", bytesutil.Trunc(status.PublicKey[:])),
 			"status": status.Status.Status.String(),
 		})
-		if status.Status.Status == ethpb.ValidatorStatus_ACTIVE {
+		if status.Status.Status == ethpb.ValidatorState_ACTIVE {
 			activatedKeys = append(activatedKeys, status.PublicKey)
 			continue
 		}
-		if status.Status.Status == ethpb.ValidatorStatus_EXITED {
+		if status.Status.Status == ethpb.ValidatorState_EXITED {
 			log.Info("Validator exited")
 			continue
 		}
-		if status.Status.Status == ethpb.ValidatorStatus_DEPOSIT_RECEIVED {
+		if status.Status.Status == ethpb.ValidatorState_PENDING {
 			log.WithField("expectedInclusionSlot", status.Status.DepositInclusionSlot).Info(
 				"Deposit for validator received but not processed into state")
 			continue
@@ -275,7 +275,7 @@ func (v *validator) UpdateDuties(ctx context.Context, slot uint64) error {
 				"status":         duty.Status,
 			}
 
-			if duty.Status == ethpb.ValidatorStatus_ACTIVE {
+			if duty.Status == ethpb.ValidatorState_ACTIVE {
 				if duty.ProposerSlot > 0 {
 					lFields["proposerSlot"] = duty.ProposerSlot
 				}

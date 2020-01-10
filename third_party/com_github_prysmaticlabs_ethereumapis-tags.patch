@@ -246,7 +246,7 @@ index 2ce5c34..4cbb276 100644
  message SignedBeaconBlockHeader {
 @@ -183,14 +184,14 @@ message SignedBeaconBlockHeader {
      BeaconBlockHeader header = 1;
-
+ 
      // 96 byte BLS signature from the validator that produced this block header.
 -    bytes signature = 2;
 +    bytes signature = 2 [(gogoproto.moretags) = "ssz-size:\"96\""];
@@ -263,7 +263,7 @@ index 2ce5c34..4cbb276 100644
 +    bytes signature = 3 [(gogoproto.moretags) = "ssz-size:\"96\""];
  }
 diff --git a/eth/v1alpha1/beacon_chain.proto b/eth/v1alpha1/beacon_chain.proto
-index 494b5d6..c87464b 100644
+index 8803cda..f1a7224 100644
 --- a/eth/v1alpha1/beacon_chain.proto
 +++ b/eth/v1alpha1/beacon_chain.proto
 @@ -15,6 +15,7 @@ syntax = "proto3";
@@ -416,7 +416,7 @@ index 494b5d6..c87464b 100644
  
      // The epoch for which this set of validator assignments is valid.
 diff --git a/eth/v1alpha1/validator.proto b/eth/v1alpha1/validator.proto
-index 4bd149a..09dac9d 100644
+index b284d6f..f29cb2c 100644
 --- a/eth/v1alpha1/validator.proto
 +++ b/eth/v1alpha1/validator.proto
 @@ -15,6 +15,7 @@ syntax = "proto3";
@@ -427,7 +427,47 @@ index 4bd149a..09dac9d 100644
  import "google/api/annotations.proto";
  import "google/protobuf/empty.proto";
  import "eth/v1alpha1/beacon_block.proto";
-@@ -180,7 +181,7 @@ message DomainResponse {
+@@ -162,6 +163,39 @@ service BeaconNodeValidator {
+             post: "/eth/v1alpha1/validator/exit"
+         };
+     }
++
++    // GetConfig provides configuration about the given validators.
++    // Configuration should not change during the lifetime of the validator.
++    // If no validators are given it will return configuration about all validators.
++    rpc GetConfig(GetValidatorConfigRequest) returns (GetValidatorConfigResponse) {
++        option (google.api.http) = {
++            get: "/eth/v1alpha1/validator/config"
++        };
++    }
++
++    // GetConfigStream provides configuration about new validators.
++    rpc GetConfigStream(google.protobuf.Empty) returns (stream ValidatorConfig) {
++        option (google.api.http) = {
++            get: "/eth/v1alpha1/validator/config/stream"
++        };
++    }
++
++    // GetInfo provides information about the given validators.
++    // Information will potentially change every epoch as the validator goes about its business.
++    // If no validators are given it will return information about all validators.
++    rpc GetInfo(GetValidatorInfoRequest) returns (GetValidatorInfoResponse) {
++        option (google.api.http) = {
++            get: "/eth/v1alpha1/validator/info"
++        };
++    }
++
++    // GetInfoStream provides information about the given validators at the beginning of each new epoch.
++    // If no validators are given it will return information about all validators.
++    rpc GetInfoStream(GetValidatorInfoStreamRequest) returns (stream ValidatorInfo) {
++        option (google.api.http) = {
++            get: "/eth/v1alpha1/validator/info/stream"
++        };
++    }
+ }
+ 
+ message DomainRequest {
+@@ -180,7 +214,7 @@ message DomainResponse {
  
  message ValidatorActivationRequest {
      // A list of 48 byte validator public keys.
@@ -436,7 +476,7 @@ index 4bd149a..09dac9d 100644
  }
  
  message ValidatorActivationResponse {
-@@ -206,7 +207,7 @@ message ChainStartResponse {
+@@ -206,7 +240,7 @@ message ChainStartResponse {
  
  message ValidatorIndexRequest {
      // A 48 byte validator public key.
@@ -445,16 +485,33 @@ index 4bd149a..09dac9d 100644
  }
  
  message ValidatorIndexResponse {
-@@ -216,7 +217,7 @@ message ValidatorIndexResponse {
+@@ -216,23 +250,12 @@ message ValidatorIndexResponse {
  
  message ValidatorStatusRequest {
      // A 48 byte validator public key.
 -    bytes public_key = 1;
+-}
+-
+-enum ValidatorStatus {
+-  UNKNOWN_STATUS = 0;
+-  DEPOSIT_RECEIVED = 1;
+-  PENDING_ACTIVE = 2;
+-  ACTIVE = 3;
+-  INITIATED_EXIT = 4;
+-  WITHDRAWABLE = 5;
+-  EXITED = 6;
+-  EXITED_SLASHED = 7;
 +    bytes public_key = 1 [(gogoproto.moretags) = "ssz-size:\"48\""];
  }
  
- enum ValidatorStatus {
-@@ -255,7 +256,7 @@ message DutiesRequest {
+ message ValidatorStatusResponse {
+     // The corresponding validator status.
+-    ValidatorStatus status = 1;
++    ValidatorState status = 1;
+ 
+     // The block number of the Ethereum proof-of-work chain
+ 	// where the deposit for the validator was included.
+@@ -255,7 +278,7 @@ message DutiesRequest {
      uint64 epoch = 1;
  
      // Array of byte encoded BLS public keys.
@@ -463,7 +520,7 @@ index 4bd149a..09dac9d 100644
  }
  
  message DutiesResponse {
-@@ -274,7 +275,7 @@ message DutiesResponse {
+@@ -274,10 +297,10 @@ message DutiesResponse {
          uint64 proposer_slot = 4;
  
          // 48 byte BLS public key for the validator who's assigned to perform a duty.
@@ -471,8 +528,12 @@ index 4bd149a..09dac9d 100644
 +        bytes public_key = 5 [(gogoproto.moretags) = "ssz-size:\"48\""];
  
          // The current status of the validator assigned to perform the duty.
-         ValidatorStatus status = 6;
-@@ -286,15 +287,16 @@ message BlockRequest {
+-        ValidatorStatus status = 6;
++        ValidatorState status = 6;
+     }
+ }
+ 
+@@ -286,15 +309,16 @@ message BlockRequest {
      uint64 slot = 1;
  
      // Validator's 32 byte randao reveal secret of the current epoch.
@@ -492,7 +553,7 @@ index 4bd149a..09dac9d 100644
  }
  
  message AttestationDataRequest {
-@@ -307,16 +309,16 @@ message AttestationDataRequest {
+@@ -307,16 +331,16 @@ message AttestationDataRequest {
  
  message AttestResponse {
      // The root of the attestation data successfully submitted to the beacon node.
@@ -512,3 +573,77 @@ index 4bd149a..09dac9d 100644
  
      // The validators current effective balance in gwei.
      uint64 effective_balance = 3;
+@@ -359,3 +383,73 @@ message ValidatorParticipation {
+     // The total amount of ether, in gwei, that is eligible for voting.
+     uint64 eligible_ether = 3;   
+ }
++
++message GetValidatorConfigRequest {
++    // A list of 48-byte validator public keys.
++    repeated bytes public_keys = 1 [(gogoproto.moretags) = "ssz-size:\"?,48\""];
++}
++
++message ValidatorConfig {
++    // 48 byte BLS public key that identifies the validator.
++    bytes public_key = 1 [(gogoproto.moretags) = "ssz-size:\"48\""];
++    // The validator's index in the beacon chain state's validator registry.
++    uint64 index = 2;
++    // The block number of the Ethereum proof-of-work chain where the deposit for the validator was included.
++    uint64 eth1_deposit_block_number = 3;
++    // The slot in the beacon chain in which the validator's deposit was included in a block.
++    int64 deposit_inclusion_slot = 4;
++    // The epoch in the beacon chain in which the validator became active.
++    int64 activation_epoch = 5;
++    // TODO withdrawal / exit
++    // The epoch in the beacon chain in which the validator became eligible for withdrawal.
++    int64 withdrawal_epoch = 6;
++}
++
++message GetValidatorConfigResponse {
++    repeated ValidatorConfig validators = 1;
++}
++
++message GetValidatorInfoRequest {
++    // A list of 48-byte validator public keys.
++    repeated bytes public_keys = 1 [(gogoproto.moretags) = "ssz-size:\"?,48\""];
++    // The slot at which to obtain the data.
++    uint64 slot = 2;
++}
++
++message ValidatorInfo {
++    // 48 byte BLS public key that identifies the validator.
++    bytes public_key = 1 [(gogoproto.moretags) = "ssz-size:\"48\""];
++    // The state of the validator.
++    ValidatorState state = 2;
++    // The validator's balance, in GWei.  Only valid for states ACTIVE, SLASHING, and EXITING.
++    uint64 balance = 3;
++    // The validator's effective balance, in GWei.  Only valid for state ACTIVE.
++    uint64 effective_balance = 4;
++}
++
++message GetValidatorInfoResponse {
++    repeated ValidatorInfo validators = 1;
++}
++
++message GetValidatorInfoStreamRequest {
++    // A list of 48-byte validator public keys.
++    repeated bytes public_keys = 1 [(gogoproto.moretags) = "ssz-size:\"?,48\""];
++}
++
++// ValidatorState provides information on the state of the validator.
++enum ValidatorState {
++    // UNKNOWN_STATE - validator does not have a known state.
++    UNKNOWN_STATE = 0;
++    // PENDING - validator is in the queue to be activated.
++    PENDING = 1;
++    // ACTIVE - validator is active.
++    ACTIVE = 2;
++    // SLASHING - validator has been caught meeting a slashing condition, further penalties possible.
++    SLASHING = 3;
++    // SLASHED - validator has been caught meeting a slashing condition, and been ejected.
++    SLASHED = 4;
++    // EXITING - validator has requested a voluntary exit.
++    EXITING = 5;
++    // EXITED - validator has completed its exit.
++    EXITED = 6;
++}

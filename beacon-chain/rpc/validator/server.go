@@ -127,9 +127,10 @@ func (vs *Server) ExitedValidators(
 	exitedKeys := make([][]byte, 0)
 	for _, st := range statuses {
 		s := st.Status.Status
-		if s == ethpb.ValidatorStatus_EXITED ||
-			s == ethpb.ValidatorStatus_EXITED_SLASHED ||
-			s == ethpb.ValidatorStatus_INITIATED_EXIT {
+		if s == ethpb.ValidatorState_SLASHING ||
+			s == ethpb.ValidatorState_SLASHED ||
+			s == ethpb.ValidatorState_EXITING ||
+			s == ethpb.ValidatorState_EXITED {
 			exitedKeys = append(exitedKeys, st.PublicKey)
 		}
 	}
@@ -196,3 +197,7 @@ func (vs *Server) WaitForChainStart(req *ptypes.Empty, stream ethpb.BeaconNodeVa
 		}
 	}
 }
+
+//func (vs *Server) GetConfig(ctx context.Context, in *ethpb.GetValidatorConfigRequest) (*ethpb.GetValidatorConfigResponse, error) {
+//	return nil, nil
+//}

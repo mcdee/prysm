@@ -138,8 +138,8 @@ func TestValidatorStatus_PendingActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not get validator status %v", err)
 	}
-	if resp.Status != ethpb.ValidatorStatus_PENDING_ACTIVE {
-		t.Errorf("Wanted %v, got %v", ethpb.ValidatorStatus_PENDING_ACTIVE, resp.Status)
+	if resp.Status != ethpb.ValidatorState_PENDING {
+		t.Errorf("Wanted %v, got %v", ethpb.ValidatorState_PENDING, resp.Status)
 	}
 }
 
@@ -216,7 +216,7 @@ func TestValidatorStatus_Active(t *testing.T) {
 	}
 
 	expected := &ethpb.ValidatorStatusResponse{
-		Status:               ethpb.ValidatorStatus_ACTIVE,
+		Status:               ethpb.ValidatorState_ACTIVE,
 		ActivationEpoch:      5,
 		DepositInclusionSlot: 2218,
 	}
@@ -294,82 +294,12 @@ func TestValidatorStatus_InitiatedExit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not get validator status %v", err)
 	}
-	if resp.Status != ethpb.ValidatorStatus_INITIATED_EXIT {
-		t.Errorf("Wanted %v, got %v", ethpb.ValidatorStatus_INITIATED_EXIT, resp.Status)
+	if resp.Status != ethpb.ValidatorState_EXITING {
+		t.Errorf("Wanted %v, got %v", ethpb.ValidatorState_EXITING, resp.Status)
 	}
 }
 
-func TestValidatorStatus_Withdrawable(t *testing.T) {
-	db := dbutil.SetupDB(t)
-	defer dbutil.TeardownDB(t, db)
-	ctx := context.Background()
-
-	pubKey := pubKey(1)
-	if err := db.SaveValidatorIndex(ctx, pubKey, 0); err != nil {
-		t.Fatalf("Could not save validator index: %v", err)
-	}
-
-	// Withdrawable exit because current epoch is after validator withdrawable epoch.
-	slot := uint64(10000)
-	epoch := helpers.SlotToEpoch(slot)
-	block := blk.NewGenesisBlock([]byte{})
-	if err := db.SaveBlock(ctx, block); err != nil {
-		t.Fatalf("Could not save genesis block: %v", err)
-	}
-	genesisRoot, err := ssz.HashTreeRoot(block.Block)
-	if err != nil {
-		t.Fatalf("Could not get signing root %v", err)
-	}
-
-	state := &pbp2p.BeaconState{
-		Slot: 10000,
-		Validators: []*ethpb.Validator{{
-			WithdrawableEpoch: epoch - 1,
-			ExitEpoch:         epoch - 2,
-			PublicKey:         pubKey},
-		}}
-	depData := &ethpb.Deposit_Data{
-		PublicKey:             pubKey,
-		Signature:             []byte("hi"),
-		WithdrawalCredentials: []byte("hey"),
-	}
-
-	deposit := &ethpb.Deposit{
-		Data: depData,
-	}
-	depositTrie, err := trieutil.NewTrie(int(params.BeaconConfig().DepositContractTreeDepth))
-	if err != nil {
-		t.Fatalf("Could not setup deposit trie: %v", err)
-	}
-	depositCache := depositcache.NewDepositCache()
-	depositCache.InsertDeposit(ctx, deposit, 0 /*blockNum*/, 0, depositTrie.Root())
-	height := time.Unix(int64(params.BeaconConfig().Eth1FollowDistance), 0).Unix()
-	p := &mockPOW.POWChain{
-		TimesByHeight: map[int]uint64{
-			0: uint64(height),
-		},
-	}
-	vs := &Server{
-		BeaconDB:          db,
-		ChainStartFetcher: p,
-		BlockFetcher:      p,
-		Eth1InfoFetcher:   p,
-		DepositFetcher:    depositCache,
-		HeadFetcher:       &mockChain.ChainService{State: state, Root: genesisRoot[:]},
-	}
-	req := &ethpb.ValidatorStatusRequest{
-		PublicKey: pubKey,
-	}
-	resp, err := vs.ValidatorStatus(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Could not get validator status %v", err)
-	}
-	if resp.Status != ethpb.ValidatorStatus_WITHDRAWABLE {
-		t.Errorf("Wanted %v, got %v", ethpb.ValidatorStatus_WITHDRAWABLE, resp.Status)
-	}
-}
-
-func TestValidatorStatus_ExitedSlashed(t *testing.T) {
+func TestValidatorStatus_Slashed(t *testing.T) {
 	db := dbutil.SetupDB(t)
 	defer dbutil.TeardownDB(t, db)
 	ctx := context.Background()
@@ -434,8 +364,8 @@ func TestValidatorStatus_ExitedSlashed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not get validator status %v", err)
 	}
-	if resp.Status != ethpb.ValidatorStatus_EXITED_SLASHED {
-		t.Errorf("Wanted %v, got %v", ethpb.ValidatorStatus_EXITED_SLASHED, resp.Status)
+	if resp.Status != ethpb.ValidatorState_SLASHED {
+		t.Errorf("Wanted %v, got %v", ethpb.ValidatorState_SLASHED, resp.Status)
 	}
 }
 
@@ -511,8 +441,8 @@ func TestValidatorStatus_Exited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not get validator status %v", err)
 	}
-	if resp.Status != ethpb.ValidatorStatus_EXITED {
-		t.Errorf("Wanted %v, got %v", ethpb.ValidatorStatus_EXITED, resp.Status)
+	if resp.Status != ethpb.ValidatorState_EXITED {
+		t.Errorf("Wanted %v, got %v", ethpb.ValidatorState_EXITED, resp.Status)
 	}
 }
 
@@ -538,8 +468,8 @@ func TestValidatorStatus_UnknownStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not get validator status %v", err)
 	}
-	if resp.Status != ethpb.ValidatorStatus_UNKNOWN_STATUS {
-		t.Errorf("Wanted %v, got %v", ethpb.ValidatorStatus_UNKNOWN_STATUS, resp.Status)
+	if resp.Status != ethpb.ValidatorState_UNKNOWN_STATE {
+		t.Errorf("Wanted %v, got %v", ethpb.ValidatorState_UNKNOWN_STATE, resp.Status)
 	}
 }
 
@@ -621,18 +551,19 @@ func TestMultipleValidatorStatus_OK(t *testing.T) {
 	if !activeExists {
 		t.Fatal("No activated validator exists when there was supposed to be 2")
 	}
-	if response[0].Status.Status != ethpb.ValidatorStatus_ACTIVE {
+	if response[0].Status.Status != ethpb.ValidatorState_ACTIVE {
 		t.Errorf("Validator with pubkey %#x is not activated and instead has this status: %s",
 			response[0].PublicKey, response[0].Status.Status.String())
 	}
 
-	if response[1].Status.Status != ethpb.ValidatorStatus_ACTIVE {
+	if response[1].Status.Status != ethpb.ValidatorState_ACTIVE {
 		t.Errorf("Validator with pubkey %#x was activated when not supposed to",
 			response[1].PublicKey)
 	}
 
-	if response[2].Status.Status != ethpb.ValidatorStatus_DEPOSIT_RECEIVED {
-		t.Errorf("Validator with pubkey %#x is not activated and instead has this status: %s",
-			response[2].PublicKey, response[2].Status.Status.String())
-	}
+	// TODO
+	//	if response[2].Status.Status != ethpb.ValidatorState_DEPOSITED {
+	//		t.Errorf("Validator with pubkey %#x is not activated and instead has this status: %s",
+	//			response[2].PublicKey, response[2].Status.Status.String())
+	//	}
 }
