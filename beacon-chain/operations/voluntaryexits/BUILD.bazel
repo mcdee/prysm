@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "pool.go",
+        "service.go",
+    ],
+    importpath = "github.com/prysmaticlabs/prysm/beacon-chain/operations/voluntaryexits",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//beacon-chain/operations/voluntaryexits/kv:go_default_library",
+        "@com_github_dgraph_io_ristretto//:go_default_library",
+        "@com_github_prysmaticlabs_ethereumapis//eth/v1alpha1:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["service_test.go"],
+    embed = [":go_default_library"],
+)

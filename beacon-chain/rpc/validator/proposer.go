@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"sort"
 
 	"github.com/pkg/errors"
 	ethpb "github.com/prysmaticlabs/ethereumapis/eth/v1alpha1"
@@ -58,6 +59,13 @@ func (vs *Server) GetBlock(ctx context.Context, req *ethpb.BlockRequest) (*ethpb
 		return nil, status.Errorf(codes.Internal, "Could not filter attestations: %v", err)
 	}
 
+	// Pack voluntary exits which have not been included in the beacon chain.
+	voluntaryExits := vs.VoluntaryExitsPoolFetcher.VoluntaryExits()
+	voluntaryExits, err = vs.filterVoluntaryExitsForBlockInclusion(ctx, req.Slot, voluntaryExits)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Could not filter voluntary exits: %v", err)
+	}
+
 	// Use zero hash as stub for state root to compute later.
 	stateRoot := params.BeaconConfig().ZeroHash[:]
 
@@ -75,7 +83,7 @@ func (vs *Server) GetBlock(ctx context.Context, req *ethpb.BlockRequest) (*ethpb
 			// TODO(2766): Implement rest of the retrievals for beacon block operations
 			ProposerSlashings: []*ethpb.ProposerSlashing{},
 			AttesterSlashings: []*ethpb.AttesterSlashing{},
-			VoluntaryExits:    []*ethpb.SignedVoluntaryExit{},
+			VoluntaryExits:    voluntaryExits,
 			Graffiti:          graffiti[:],
 		},
 	}
@@ -394,4 +402,35 @@ func constructMerkleProof(trie *trieutil.SparseMerkleTrie, index int, deposit *e
 	// property changes during a state transition after a voting period.
 	deposit.Proof = proof
 	return deposit, nil
+}
+
+// This filters the input voluntary exits to return a list of valid voluntary exits to be packaged inside a beacon block.
+func (vs *Server) filterVoluntaryExitsForBlockInclusion(ctx context.Context, slot uint64, exits []*ethpb.SignedVoluntaryExit) ([]*ethpb.SignedVoluntaryExit, error) {
+	ctx, span := trace.StartSpan(ctx, "ProposerServer.filterVoluntaryExitsForBlockInclusion")
+	defer span.End()
+
+	validExits := make([]*ethpb.SignedVoluntaryExit, 0, params.BeaconConfig().MaxVoluntaryExits)
+
+	// Add the voluntary exits in epoch order
+	sort.Slice(exits, func(i, j int) bool {
+		return exits[i].Exit.Epoch < exits[j].Exit.Epoch
+	})
+
+	epoch := helpers.SlotToEpoch(slot)
+	for _, exit := range exits {
+		if len(validExits) == int(params.BeaconConfig().MaxVoluntaryExits) {
+			break
+		}
+		if exit.Exit.Epoch <= epoch {
+			validExits = append(validExits, exit)
+		}
+	}
+
+	// TODO Remove valid exits from our pool.
+	// TODO or leave this for BlockProcessed?
+	//	for _, exit := range validExits {
+	//			vs.VoluntaryExitsPoolFetcher.
+	//	}
+
+	return validExits, nil
 }

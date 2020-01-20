@@ -23,6 +23,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/flags"
 	"github.com/prysmaticlabs/prysm/beacon-chain/gateway"
 	interopcoldstart "github.com/prysmaticlabs/prysm/beacon-chain/interop-cold-start"
+	"github.com/prysmaticlabs/prysm/beacon-chain/operations"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/attestations"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	"github.com/prysmaticlabs/prysm/beacon-chain/powchain"
@@ -104,6 +105,10 @@ func NewBeaconNode(ctx *cli.Context) (*BeaconNode, error) {
 	}
 
 	if err := beacon.startDB(ctx); err != nil {
+		return nil, err
+	}
+
+	if err := beacon.registerOperationsService(ctx); err != nil {
 		return nil, err
 	}
 
@@ -247,6 +252,18 @@ func (b *BeaconNode) startDB(ctx *cli.Context) error {
 	b.db = d
 	b.depositCache = depositcache.NewDepositCache()
 	return nil
+}
+
+func (b *BeaconNode) registerOperationsService(ctx *cli.Context) error {
+	operationsService, err := operations.NewService(context.Background(), &operations.Config{
+		DB:                b.db,
+		StateNotifier:     b,
+		OperationNotifier: b,
+	})
+	if err != nil {
+		return errors.Wrap(err, "could not register operations service")
+	}
+	return b.services.RegisterService(operationsService)
 }
 
 func (b *BeaconNode) registerP2P(ctx *cli.Context) error {

@@ -19,6 +19,7 @@ import (
 	opfeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/operation"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/db"
+	"github.com/prysmaticlabs/prysm/beacon-chain/operations"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/attestations"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	"github.com/prysmaticlabs/prysm/beacon-chain/powchain"
@@ -85,6 +86,8 @@ type Service struct {
 	slasherCert            string
 	slasherCredentialError error
 	slasherClient          slashpb.SlasherClient
+
+	voluntaryExitsPoolFetcher operations.VoluntaryExitsPoolFetcher
 }
 
 // Config options for the beacon node RPC server.
@@ -114,6 +117,8 @@ type Config struct {
 	SlasherCert           string
 	StateNotifier         statefeed.Notifier
 	OperationNotifier     opfeed.Notifier
+
+	VoluntaryExitsPoolFetcher operations.VoluntaryExitsPoolFetcher
 }
 
 // NewService instantiates a new RPC service instance that will
@@ -150,6 +155,8 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 		operationNotifier:     cfg.OperationNotifier,
 		slasherProvider:       cfg.SlasherProvider,
 		slasherCert:           cfg.SlasherCert,
+
+		voluntaryExitsPoolFetcher: cfg.VoluntaryExitsPoolFetcher,
 	}
 }
 
@@ -219,6 +226,8 @@ func (s *Service) Start() {
 		Eth1BlockFetcher:       s.powChainService,
 		PendingDepositsFetcher: s.pendingDepositFetcher,
 		GenesisTime:            genesisTime,
+
+		VoluntaryExitsPoolFetcher: s.voluntaryExitsPoolFetcher,
 	}
 	nodeServer := &node.Server{
 		BeaconDB:           s.beaconDB,
