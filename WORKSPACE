@@ -1575,3 +1575,27 @@ go_repository(
     commit = "e180dbdc8da04c4fa04272e875ce64949f38bd3e",
     importpath = "github.com/shibukawa/configdir",
 )
+
+go_repository(
+    name = "com_github_dgraph_io_badger",
+    commit = "2fa005c9d4bf695277ab5214c1fbce3735b9562a", # v1.6.0
+    importpath = "github.com/dgraph-io/badger",
+)
+
+go_repository(
+    name = "com_github_dustin_go_humanize",
+    commit = "e673fa1ffc91213297a60d18a6f513aa74bced52", # v1.0.0
+    importpath = "github.com/dustin/go-humanize",
+)
+
+go_repository(
+    name = "com_github_dgryski_go_farm",
+    commit = "a6ae2369ad13dc757768086f0cb902728c7e03e5",
+    importpath = "github.com/dgryski/go-farm",
+)
+
+go_repository(
+    name = "com_github_andreasbriese_bbloom",
+    commit = "46b345b51c9667fcbaad862a370d73bd7aa802b6",
+    importpath = "github.com/AndreasBriese/bbloom",
+)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/dgraph-io/badger"
 	"github.com/dgraph-io/ristretto"
 	"github.com/mdlayher/prombolt"
 	"github.com/pkg/errors"
@@ -32,6 +33,7 @@ var BlockCacheSize = int64(1 << 21)
 // using BoltDB as the underlying persistent kv-store for eth2.
 type Store struct {
 	db                  *bolt.DB
+	badgerDB            *badger.DB
 	databasePath        string
 	blockCache          *ristretto.Cache
 	validatorIndexCache *ristretto.Cache
@@ -53,6 +55,16 @@ func NewKVStore(dirPath string) (*Store, error) {
 		return nil, err
 	}
 	boltDB.AllocSize = boltAllocSize
+
+	badgerOpts := badger.DefaultOptions
+	badgerOpts.Dir = dirPath + "-badger"
+	badgerOpts.ValueDir = dirPath + "-badger"
+	badgerOpts.SyncWrites = true
+	badgerDB, err := badger.Open(badgerOpts)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open badger DB")
+	}
+
 	blockCache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 1000,           // number of keys to track frequency of (1000).
 		MaxCost:     BlockCacheSize, // maximum cost of cache (1000 Blocks).
@@ -73,6 +85,7 @@ func NewKVStore(dirPath string) (*Store, error) {
 
 	kv := &Store{
 		db:                  boltDB,
+		badgerDB:            badgerDB,
 		databasePath:        dirPath,
 		blockCache:          blockCache,
 		validatorIndexCache: validatorCache,
