@@ -1680,3 +1680,10 @@ go_repository(
     sum = "h1:GWsU1WjSE2rtvyTYGcndqmPPkQkBNV7pEuZdnGtwtu4=",
     version = "v0.0.0-20200321040036-d43e30eacb43",
 )
+
+go_repository(
+    name = "com_github_fsnotify_fsnotify",
+    importpath = "github.com/fsnotify/fsnotify",
+    sum = "h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWoS4=",
+    version = "v1.4.9",
+)
